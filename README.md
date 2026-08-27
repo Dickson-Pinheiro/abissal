@@ -38,11 +38,26 @@ profundidade real, e a vinheta aperta a cada camada — a pressão fechando.
 | `W` `A` `S` `D` | mover |
 | mouse | mirar e atirar |
 | `Shift` / botão direito | impulso, com breve invulnerabilidade |
-| `Esc` · `M` | pausar · som |
+| `Esc` · `M` · `F` | pausar · som · tela cheia |
 | `1` `2` `3` | escolher melhoria |
 
-Sem mouse, a mira trava sozinha na criatura mais próxima. No celular, dois
-analógicos aparecem ao toque: esquerda move, direita mira e atira.
+Sem mouse, a mira trava sozinha na criatura mais próxima.
+
+## No celular
+
+Dois analógicos flutuantes aparecem onde você toca: **o polegar esquerdo move,
+o direito mira**. O disparo é contínuo — não há gatilho para segurar — e, quando
+você não está mirando, a mira trava sozinha na criatura mais próxima. O botão de
+impulso traz um anel que mostra a recarga.
+
+O jogo é instalável. No Android, o navegador oferece **Instalar**; no iPhone, use
+**Compartilhar → Adicionar à Tela de Início**. Instalado, ele abre em tela cheia,
+sem barra de navegador, e funciona offline. Também há um botão de tela cheia no
+HUD, para quem preferir jogar direto do navegador.
+
+A tela não apaga durante a partida, e sair do app pausa em vez de deixar o
+submersível sozinho. Nos aparelhos de tela muito densa a renderização é limitada
+a 1,6× — bem menos pixels por quadro, sem diferença visível.
 
 ## Melhorias
 
@@ -102,3 +117,8 @@ som no projeto.
 O jogo mede o tempo de quadro e, se atrasar, recolhe sozinho o halo largo e
 depois o bloom inteiro, voltando quando melhora. Recorde e progresso ficam no
 `localStorage` de cada navegador.
+
+É também um PWA: `manifest.webmanifest` declara instalação em tela cheia e
+`sw.js` guarda o jogo em cache para funcionar offline depois da primeira
+visita — rede primeiro na navegação, para uma versão nova chegar assim que
+houver.

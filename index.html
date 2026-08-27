@@ -1,5 +1,16 @@
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Abissal</title>
+<meta name="description" content="Desça quatro camadas do oceano, evolua o submersível entre as ondas e descubra o que dorme no fundo da fossa.">
+<meta name="theme-color" content="#050912">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Abissal">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<link rel="icon" href="icones/favicon-32.png" sizes="32x32">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Chivo+Mono:wght@300;400;500;700&display=swap">
@@ -20,6 +31,10 @@
   --muted:#7688A6;
   --font-display:'Syne','Trebuchet MS',sans-serif;
   --font-mono:'Chivo Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  --sa-t:env(safe-area-inset-top,0px);
+  --sa-r:env(safe-area-inset-right,0px);
+  --sa-b:env(safe-area-inset-bottom,0px);
+  --sa-l:env(safe-area-inset-left,0px);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -31,7 +46,13 @@ body{
   overflow:hidden;
   -webkit-font-smoothing:antialiased;
   overscroll-behavior:none;
+  /* nada de seleção, lupa de toque ou realce azul ao tocar */
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:none;
 }
+button{-webkit-tap-highlight-color:transparent}
 #stage{position:fixed;inset:0;background:var(--abyss);touch-action:none}
 #game{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
 #stage.is-menu #game{cursor:default}
@@ -51,10 +72,10 @@ body{
 /* ---------- HUD ---------- */
 #hud{position:absolute;inset:0;pointer-events:none;font-family:var(--font-mono)}
 .hud-corner{position:absolute;display:flex;flex-direction:column;gap:.55rem}
-.tl{top:1.4rem;left:1.5rem}
-.tr{top:1.4rem;right:1.5rem;align-items:flex-end;text-align:right}
-.bl{bottom:1.4rem;left:1.5rem}
-.br{bottom:1.4rem;right:1.5rem;align-items:flex-end}
+.tl{top:calc(1.4rem + var(--sa-t));left:calc(1.5rem + var(--sa-l))}
+.tr{top:calc(1.4rem + var(--sa-t));right:calc(1.5rem + var(--sa-r));align-items:flex-end;text-align:right}
+.bl{bottom:calc(1.4rem + var(--sa-b));left:calc(1.5rem + var(--sa-l))}
+.br{bottom:calc(1.4rem + var(--sa-b));right:calc(1.5rem + var(--sa-r));align-items:flex-end}
 
 .eyebrow{
   font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;
@@ -122,7 +143,7 @@ body{
 
 /* barra de chefe */
 #bossbar{
-  position:absolute;top:2.2rem;left:50%;transform:translateX(-50%);
+  position:absolute;top:calc(4.4rem + var(--sa-t));left:50%;transform:translateX(-50%);
   width:min(460px,60vw);opacity:0;transition:opacity .3s;
 }
 #bossbar.on{opacity:1}
@@ -151,10 +172,11 @@ body{
 /* ---------- overlays ---------- */
 .overlay{
   position:absolute;inset:0;display:none;
+  padding:calc(1.5rem + var(--sa-t)) calc(1.5rem + var(--sa-r)) calc(1.5rem + var(--sa-b)) calc(1.5rem + var(--sa-l));
   align-items:center;justify-content:center;
   background:radial-gradient(ellipse at 50% 45%, rgba(5,9,18,.72), rgba(5,9,18,.94));
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
-  padding:1.5rem;z-index:5;overflow-y:auto;
+  z-index:5;overflow-y:auto;
 }
 .overlay.on{display:flex}
 .panel{
@@ -263,7 +285,7 @@ kbd{
 .record{color:var(--amber);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;margin:-1.3rem 0 1.6rem}
 
 /* botões flutuantes */
-#sysbar{position:absolute;top:1.4rem;left:50%;transform:translateX(-50%);display:flex;gap:.4rem;pointer-events:auto}
+#sysbar{position:absolute;top:calc(1.4rem + var(--sa-t));left:50%;transform:translateX(-50%);display:flex;gap:.4rem;pointer-events:auto}
 .sysbtn{
   cursor:pointer;width:30px;height:30px;display:grid;place-items:center;
   border:1px solid var(--line-soft);border-radius:2px;background:rgba(8,14,30,.6);
@@ -276,25 +298,65 @@ kbd{
 /* toque */
 #touch{position:absolute;inset:0;display:none;pointer-events:none;z-index:4}
 #stage.touch #touch{display:block}
-.stick{position:absolute;width:112px;height:112px;border-radius:50%;border:1px solid var(--line-soft);opacity:0;transition:opacity .15s}
-.stick i{position:absolute;top:50%;left:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(82,242,208,.16);border:1px solid var(--bio)}
-.stick.on{opacity:.9}
+.stick{
+  position:absolute;width:132px;height:132px;border-radius:50%;
+  border:1px solid rgba(226,236,247,.13);
+  background:radial-gradient(circle, rgba(226,236,247,.05), transparent 68%);
+  opacity:0;transition:opacity .14s;
+}
+.stick i{
+  position:absolute;top:50%;left:50%;width:54px;height:54px;margin:-27px 0 0 -27px;
+  border-radius:50%;background:rgba(82,242,208,.18);border:1.5px solid var(--bio);
+  box-shadow:0 0 20px rgba(82,242,208,.4);
+}
+#stick-aim i{background:rgba(255,196,107,.18);border-color:var(--amber);box-shadow:0 0 20px rgba(255,196,107,.4)}
+.stick.on{opacity:.92}
 #dashbtn{
-  position:absolute;right:1.6rem;bottom:7.5rem;width:64px;height:64px;border-radius:50%;
-  border:1px solid var(--violet);color:var(--violet);background:rgba(123,107,255,.1);
-  display:grid;place-items:center;font-size:.6rem;letter-spacing:.14em;pointer-events:auto;
+  position:absolute;right:calc(1.4rem + var(--sa-r));bottom:calc(9.5rem + var(--sa-b));
+  width:74px;height:74px;border-radius:50%;border:0;background:transparent;
+  color:var(--violet);display:grid;place-items:center;
+  font-size:.58rem;letter-spacing:.14em;pointer-events:auto;
   font-family:var(--font-mono);cursor:pointer;
 }
+#dashbtn::before{            /* anel de recarga do impulso */
+  content:"";position:absolute;inset:-5px;border-radius:50%;
+  background:conic-gradient(from -90deg, var(--violet) calc(var(--cd,1) * 360deg), rgba(123,107,255,.15) 0);
+}
+#dashbtn::after{             /* miolo, que transforma o disco em anel */
+  content:"";position:absolute;inset:0;border-radius:50%;
+  background:rgba(10,16,32,.86);border:1px solid rgba(123,107,255,.35);
+}
+#dashbtn span{position:relative;z-index:1}
+#dashbtn:active::after{background:rgba(123,107,255,.3)}
 #stage.touch .desktop-only{display:none}
+.dicas{display:none;flex-direction:column;gap:.7rem;margin:-1.1rem 0 1.6rem}
+.dicas.on{display:flex}
+.dica{display:none;margin:0;font-size:.72rem;line-height:1.6;color:var(--muted);letter-spacing:.01em}
+.dica.on{display:block}
+.dica .mk{font-style:normal;color:var(--bio);margin-right:.5rem}
+.dica b{color:var(--foam);font-weight:400}
+.sysbtn svg{width:15px;height:15px;display:block}
+.sysbtn .sai{display:none}
+.sysbtn.cheio .entra{display:none}
+.sysbtn.cheio .sai{display:block}
 
 @media (max-width:720px){
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .cards{grid-template-columns:1fr}
-  .card{padding:1rem 1.1rem;flex-direction:row;align-items:center;gap:1rem;min-height:0}
-  .card .ico{width:42px;height:42px}
+  .cards{grid-template-columns:1fr;gap:.7rem}
+  .card{padding:.95rem 1rem;flex-direction:row;align-items:center;gap:.95rem;min-height:0}
+  .card .ico{width:46px;height:46px}
   .card .marca{display:none}
-  .card .foot{display:none}
-  .card .txt{display:flex;flex-direction:column;gap:.3rem}
+  .card .txt{display:flex;flex-direction:column;gap:.3rem;flex:1;min-width:0}
+  .card .foot{margin:0;padding:0;flex:none}
+  .card .foot .num{display:none}
+  .card .pips{flex-direction:column;gap:2px}
+  .card .pips i{width:3px;height:8px}
+  .sysbtn{width:40px;height:40px;font-size:.8rem}
+  .sysbtn svg{width:17px;height:17px}
+  .btn{padding:1.05em 2em}
+  .btn.ghost{padding:.95em 1.5em}
+  .title{font-size:clamp(2.6rem,15vw,4rem)}
+  .tagline{font-size:.8rem}
   .panel{padding:1.8rem 1.4rem}
   #upgrade .panel{padding:1.5rem 1.2rem}
   .bar,.bar.xp{width:min(48vw,200px)}
@@ -355,6 +417,10 @@ kbd{
 
     <div id="sysbar">
       <button class="sysbtn" id="btn-sound" title="Som (M)" aria-label="Alternar som">♪</button>
+      <button class="sysbtn" id="btn-cheio" title="Tela cheia (F)" aria-label="Tela cheia">
+        <span class="entra"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/></svg></span>
+        <span class="sai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/></svg></span>
+      </button>
       <button class="sysbtn" id="btn-pause" title="Pausar (Esc)" aria-label="Pausar">❚❚</button>
     </div>
   </div>
@@ -362,7 +428,7 @@ kbd{
   <div id="touch">
     <div class="stick" id="stick-move"><i></i></div>
     <div class="stick" id="stick-aim"><i></i></div>
-    <button id="dashbtn">IMPULSO</button>
+    <button id="dashbtn" aria-label="Impulso"><span>IMPULSO</span></button>
   </div>
 
   <!-- MENU -->
@@ -375,10 +441,15 @@ kbd{
         <div class="key-row desktop-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover</div>
         <div class="key-row desktop-only"><kbd>MOUSE</kbd> mirar e atirar</div>
         <div class="key-row desktop-only"><kbd>SHIFT</kbd> impulso</div>
-        <div class="key-row desktop-only"><kbd>ESC</kbd> pausar &middot; <kbd>M</kbd> som</div>
+        <div class="key-row desktop-only"><kbd>ESC</kbd> pausar &middot; <kbd>M</kbd> som &middot; <kbd>F</kbd> tela cheia</div>
+      </div>
+      <div class="dicas" id="dicas">
+        <p class="dica" id="dica-girar"><i class="mk">◱</i>Deite o aparelho: a arena fica mais larga e sobra espaço para os polegares.</p>
+        <p class="dica" id="dica-ios"><i class="mk">⇪</i>Para jogar em tela cheia: <b>Compartilhar</b> &rarr; <b>Adicionar à Tela de Início</b>.</p>
       </div>
       <div class="btn-row">
         <button class="btn" id="btn-start">Iniciar descida</button>
+        <button class="btn ghost" id="btn-instalar" hidden>Instalar</button>
         <button class="btn ghost" id="btn-endless" hidden>Correnteza eterna</button>
         <span class="best" id="menu-best"></span>
       </div>
@@ -616,6 +687,10 @@ const pick = a=>a[Math.floor(Math.random()*a.length)];
 const clamp= (v,a,b)=>v<a?a:(v>b?b:v);
 const lerp = (a,b,t)=>a+(b-a)*t;
 const REDUZ = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TOQUE = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
+const INSTALADO = matchMedia('(display-mode: standalone)').matches
+               || matchMedia('(display-mode: fullscreen)').matches
+               || navigator.standalone === true;
 const fmt = n=>Math.round(n).toLocaleString('pt-BR');
 
 /* ══════ CANVAS + BLOOM ══════ */
@@ -630,14 +705,18 @@ let W=0, H=0, DPR=1, TEM_FILTRO=true;
 try { ctx.filter='blur(2px)'; TEM_FILTRO = ctx.filter==='blur(2px)'; ctx.filter='none'; } catch(e){ TEM_FILTRO=false; }
 
 function redimensionar(){
-  DPR = Math.min(devicePixelRatio||1, 2);
-  W = innerWidth; H = innerHeight;
+  DPR = Math.min(devicePixelRatio||1, TOQUE ? 1.6 : 2);
+  const r = cv.getBoundingClientRect();
+  W = Math.max(1, Math.round(r.width)  || innerWidth);
+  H = Math.max(1, Math.round(r.height) || innerHeight);
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
   ctx.setTransform(DPR,0,0,DPR,0,0);
   bcv.width = Math.max(1,Math.round(W/4)); bcv.height = Math.max(1,Math.round(H/4));
   bcv2.width= Math.max(1,Math.round(W/10)); bcv2.height= Math.max(1,Math.round(H/10));
 }
 addEventListener('resize', redimensionar);
+addEventListener('orientationchange', ()=>setTimeout(redimensionar,120));
+if(window.visualViewport) visualViewport.addEventListener('resize', redimensionar);
 redimensionar();
 
 /* sprites de brilho em cache — muito mais barato que shadowBlur */
@@ -731,7 +810,7 @@ const Som = (()=>{
 const teclas = new Set();
 const mouse = {x:innerWidth/2, y:innerHeight/2, baixo:false, usado:false};
 const toque = {mover:null, mirar:null, dash:false};
-let modoToque = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
+let modoToque = TOQUE;
 
 addEventListener('keydown', e=>{
   const k=e.key.toLowerCase();
@@ -739,6 +818,7 @@ addEventListener('keydown', e=>{
   teclas.add(k);
   if(k==='escape'||k==='p') alternarPausa();
   if(k==='m') atualizarBotaoSom(Som.alt());
+  if(k==='f') alternarTelaCheia();
   if(G.estado==='melhoria' && ['1','2','3'].includes(k)){
     const b=document.querySelectorAll('#cards .card')[+k-1]; if(b) b.click();
   }
@@ -754,11 +834,11 @@ cv.addEventListener('contextmenu', e=>e.preventDefault());
 const elStickMover = document.getElementById('stick-move');
 const elStickMirar = document.getElementById('stick-aim');
 function posStick(el, o, x, y){
-  el.style.left=(o.ox-56)+'px'; el.style.top=(o.oy-56)+'px'; el.classList.add('on');
-  const dx=x-o.ox, dy=y-o.oy, d=Math.hypot(dx,dy), m=Math.min(d,48);
+  el.style.left=(o.ox-66)+'px'; el.style.top=(o.oy-66)+'px'; el.classList.add('on');
+  const dx=x-o.ox, dy=y-o.oy, d=Math.hypot(dx,dy), m=Math.min(d,56);
   const a=Math.atan2(dy,dx);
   el.firstElementChild.style.transform=`translate(${Math.cos(a)*m}px, ${Math.sin(a)*m}px)`;
-  o.nx = d>4 ? dx/d : 0; o.ny = d>4 ? dy/d : 0; o.forca = clamp(d/48,0,1);
+  o.nx = d>5 ? dx/d : 0; o.ny = d>5 ? dy/d : 0; o.forca = clamp(d/56,0,1);
 }
 cv.addEventListener('touchstart', e=>{
   if(!modoToque){ modoToque=true; stage.classList.add('touch'); }
@@ -836,9 +916,10 @@ function recalcular(){
 
 /* ══════ PARTÍCULAS ══════ */
 function part(x,y,vx,vy,vida,tam,cor,tipo){
-  if(G.parts.length > (qualidade<2?480:950)) return;
+  if(G.parts.length > (qualidade<2 ? 420 : (modoToque ? 640 : 950))) return;
   G.parts.push({x,y,vx,vy,vida,max:vida,tam,cor,tipo:tipo||'ponto'});
 }
+function vibrar(p){ if(modoToque && navigator.vibrate) { try{ navigator.vibrate(p); }catch(e){} } }
 function congelar(t){ if(!REDUZ) G.congela = Math.max(G.congela, t); }
 function socar(v){ if(!REDUZ) G.punch = Math.min(G.punch + v, .08); }
 function explosao(x,y,cor,n,forca){
@@ -966,7 +1047,7 @@ function direcaoMira(){
   return alvo ? Math.atan2(alvo.y-P.y, alvo.x-P.x) : P.ang;
 }
 function querAtirar(){
-  if(modoToque) return !!(toque.mirar && toque.mirar.forca>.2);
+  if(modoToque) return true;          // sem polegar sobrando para um gatilho
   return mouse.baixo || teclas.has(' ');
 }
 function atirar(){
@@ -1036,6 +1117,7 @@ function matarInimigo(e){
   explosao(e.x,e.y,e.tom, e.tipo==='chefe'?90:14, e.tipo==='chefe'?420:170);
   G.shake = Math.min(G.shake + (e.tipo==='chefe'?26:4.5), 34);
   congelar(e.tipo==='chefe' ? .34 : .035);
+  if(e.tipo==='chefe') vibrar([0,60,60,120]);
   socar(e.tipo==='chefe' ? .062 : .005);
   Som.abate();
   for(let i2=0;i2<e.ess;i2++){
@@ -1060,7 +1142,7 @@ function ferirJogador(dano){
     explosao(P.x,P.y,'#7B6BFF',22,220); Som.impulso(); atualizarHUD(); return;
   }
   P.hp -= dano; P.invul=.65; G.shake=Math.min(G.shake+11,34);
-  congelar(.09); socar(.015);
+  congelar(.09); socar(.015); vibrar(28);
   G.combo=0; G.mult=1;
   elDano.style.opacity = Math.min(.95, .35+dano/70);
   setTimeout(()=>elDano.style.opacity=0, 90);
@@ -1121,7 +1203,7 @@ function atualizarChefe(c, dt){
       f.add.forEach(a=>c.atks.push({...a, timer:rnd(.4,1.2), giroAng:0}));
       G.shake=Math.min(G.shake+22,34); explosao(c.x,c.y,c.tom,60,340); Som.fase();
       G.parts.push({x:c.x,y:c.y,vx:0,vy:0,vida:.9,max:.9,tam:Math.max(W,H)*.95,cor:c.tom,tipo:'anel'});
-      congelar(.16); socar(.042);
+      congelar(.16); socar(.042); vibrar([0,40,50,70]);
       c.invul=.5; anunciar('', 'o casco dele se abre');
     }
   }
@@ -1715,6 +1797,8 @@ const elScore=$('.score'), elBest=$('.best'), elCombo=$('.combo'), elWaveline=$(
 const elHpBar=$('.bar.hp'), elHpFill=$('.bar.hp i'), elHpVal=$('#hpval');
 const elXpFill=$('.bar.xp i'), elLvl=$('#lvlval'), elMods=$('#mods'), elPips=$('#pips');
 const elAnn=$('#announce'), elAnnBig=$('#announce .big'), elAnnSub=$('#announce .sub');
+const elDash=$('#dashbtn'), btnCheio=$('#btn-cheio'), btnInstalar=$('#btn-instalar');
+const dicaGirar=$('#dica-girar'), dicaIos=$('#dica-ios'), elDicas=$('#dicas');
 const ovMenu=$('#menu'), ovUp=$('#upgrade'), ovPause=$('#paused'), ovFim=$('#gameover'),
       ovDesc=$('#descida'), ovVit=$('#victory');
 
@@ -1752,6 +1836,7 @@ function atualizarPips(){
   const f = P.dashT>0 ? 1-P.dashT/P.dashCd : 1;
   elPips.firstElementChild.firstElementChild.style.transform=`scaleX(${f})`;
   elPips.firstElementChild.firstElementChild.style.opacity = f<1 ? .45 : 1;
+  if(modoToque) elDash.style.setProperty('--cd', f.toFixed(3));
 }
 function anunciar(grande, sub){
   elAnnBig.textContent=grande||''; elAnnSub.textContent=sub||'';
@@ -1829,6 +1914,7 @@ function iniciarJogo(modo){
   elHud.hidden=false;
   fecharTudo();
   G.estado='jogando';
+  manterAcesa();
   iniciarCamada(G.modo==='eterno' ? CAMADAS.length : 0);
   atualizarHUD();
 }
@@ -1860,7 +1946,7 @@ function mostrarDescida(){
   Som.vitoria();
 }
 function vitoria(){
-  G.estado='vitoria';
+  G.estado='vitoria'; soltarTela();
   const novo = G.pontos>recorde;
   if(novo){ recorde=G.pontos; gravar(REC_KEY, String(recorde)); }
   campanhaFeita=true; gravar(CAMP_KEY,'1');
@@ -1878,7 +1964,7 @@ function vitoria(){
   abrir(ovVit); Som.vitoria();
 }
 function fimDeJogo(){
-  G.estado='fim';
+  G.estado='fim'; soltarTela(); vibrar([0,90,70,180]);
   explosao(P.x,P.y,'#FF5E7A',70,380); G.shake=30; Som.fim();
   const novo = G.pontos>recorde;
   if(novo){ recorde=G.pontos; gravar(REC_KEY, String(recorde)); }
@@ -1899,7 +1985,7 @@ function alternarPausa(){
   else if(G.estado==='pausado'){ G.estado='jogando'; fecharTudo(); }
 }
 function voltarMenu(){
-  G.estado='menu'; stage.classList.add('is-menu'); elHud.hidden=true;
+  G.estado='menu'; soltarTela(); stage.classList.add('is-menu'); elHud.hidden=true;
   G.inimigos.length=0; G.balas.length=0; G.balasIn.length=0; G.orbes.length=0;
   G.camada=CAMADAS[0]; G.camadaIdx=0; G.prof=200; G.profMostrada=200;
   document.documentElement.style.setProperty('--bio', CAMADAS[0].tom);
@@ -1907,6 +1993,8 @@ function voltarMenu(){
   atualizarMenu(); abrir(ovMenu);
 }
 function atualizarMenu(){
+  ajustarDicas();
+  btnInstalar.hidden = !promptInstalar;
   $('#menu-best').textContent = recorde ? 'RECORDE '+fmt(recorde) : '';
   $('#btn-endless').hidden = !campanhaFeita;
   $('#route').innerHTML = CAMADAS.map((c,i)=>
@@ -1928,8 +2016,72 @@ $('#btn-descer').addEventListener('click', ()=>{
 });
 $('#btn-pause').addEventListener('click', alternarPausa);
 $('#btn-sound').addEventListener('click', ()=>{ Som.init(); Som.retomar(); atualizarBotaoSom(Som.alt()); });
+btnCheio.addEventListener('click', alternarTelaCheia);
+btnInstalar.addEventListener('click', async ()=>{
+  if(!promptInstalar) return;
+  btnInstalar.hidden = true;
+  try{ promptInstalar.prompt(); await promptInstalar.userChoice; }catch(e){}
+  promptInstalar = null;
+});
 
 if(modoToque) stage.classList.add('touch');
+
+/* ══════ TELA CHEIA · INSTALAÇÃO · APARELHO ══════ */
+const TEM_CHEIA = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+function emTelaCheia(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function alternarTelaCheia(){
+  try{
+    if(!emTelaCheia()){
+      const el = document.documentElement;
+      const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, {navigationUI:'hide'});
+      if(p && p.catch) p.catch(()=>{});
+    } else {
+      const p = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      if(p && p.catch) p.catch(()=>{});
+    }
+  }catch(e){}
+}
+function marcarTelaCheia(){
+  btnCheio.classList.toggle('cheio', emTelaCheia());
+  setTimeout(redimensionar, 90);
+}
+document.addEventListener('fullscreenchange', marcarTelaCheia);
+document.addEventListener('webkitfullscreenchange', marcarTelaCheia);
+// no iPhone a API de tela cheia não existe: lá o caminho é a Tela de Início
+if(!TEM_CHEIA) btnCheio.hidden = true;
+
+let promptInstalar = null;
+addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault(); promptInstalar = e;
+  if(G.estado==='menu') btnInstalar.hidden = false;
+});
+addEventListener('appinstalled', ()=>{ promptInstalar=null; btnInstalar.hidden=true; });
+
+// manter a tela acesa enquanto se joga
+let travaTela = null;
+async function manterAcesa(){
+  try{ if('wakeLock' in navigator && !travaTela){ travaTela = await navigator.wakeLock.request('screen');
+        travaTela.addEventListener('release', ()=>{ travaTela=null; }); } }catch(e){}
+}
+function soltarTela(){ try{ if(travaTela) travaTela.release(); }catch(e){} travaTela=null; }
+
+// sair do app (ligação, troca de aba) pausa em vez de continuar sem ninguém olhando
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    soltarTela();
+    if(G.estado==='jogando') alternarPausa();
+  } else if(G.estado==='jogando') manterAcesa();
+});
+
+function ajustarDicas(){
+  const retrato = innerHeight > innerWidth*1.15;
+  dicaGirar.classList.toggle('on', modoToque && retrato && G.estado==='menu');
+  const ehIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+             || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  dicaIos.classList.toggle('on', ehIOS && !INSTALADO && G.estado==='menu');
+  elDicas.classList.toggle('on', dicaGirar.classList.contains('on') || dicaIos.classList.contains('on'));
+}
+addEventListener('resize', ajustarDicas);
 
 /* ══════ NEVE MARINHA ══════ */
 const fundoCv=document.createElement('canvas'), fundoCtx=fundoCv.getContext('2d');
@@ -2072,6 +2224,9 @@ function quadro(agora){
 }
 
 /* ══════ INÍCIO ══════ */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
 recalcular();
 atualizarMenu();
 P.x=W/2; P.y=H*.65;
