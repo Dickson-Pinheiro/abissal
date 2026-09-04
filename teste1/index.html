@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+	<meta name="theme-color" content="#050912">
+	<title>Abissal</title>
+	<style>
+		html, body, #canvas { margin: 0; padding: 0; border: 0; }
+		body { background: #050912; color: #e2ecf7; overflow: hidden; touch-action: none; }
+		#canvas { display: block; }
+		#canvas:focus { outline: none; }
+
+		#status { position: fixed; inset: 0; background: #050912; transition: opacity .55s ease; }
+		#status.saiu { opacity: 0; pointer-events: none; }
+		/* canvas é elemento substituído: com inset:0 e width:auto o CSS resolve
+		   pela largura intrínseca — que aqui é em pixels físicos. Num aparelho
+		   com densidade 2 o canvas ficava com o dobro da tela e a cena saía
+		   cortada. Só a densidade 1 do desktop escondia isso. */
+		#mar {
+			position: absolute; inset: 0; display: block;
+			width: 100%; height: 100%;
+		}
+
+		/* O jogo é de arena horizontal: em retrato a arena vira uma fresta e
+		   não dá para jogar. Navegador não deixa girar a tela por conta
+		   própria fora de tela cheia, então o caminho honesto é pedir — e a
+		   regra é só CSS, então vale desde o primeiro quadro, sem depender
+		   de JavaScript nenhum ter rodado. */
+		#gire {
+			position: fixed; inset: 0; z-index: 30; display: none;
+			background: #050912;
+			flex-direction: column; align-items: center; justify-content: center;
+			gap: 26px; padding: 24px; text-align: center;
+			font: 400 13px/1.6 ui-monospace, monospace; color: #76889f;
+		}
+		#gire strong {
+			display: block; font-size: 17px; font-weight: 400;
+			letter-spacing: .18em; color: #52f2d0; margin-bottom: 8px;
+		}
+		#gire .aparelho {
+			width: 108px; height: 62px; border: 2px solid #52f2d0; border-radius: 9px;
+			position: relative; opacity: .9;
+			animation: virar 2.6s ease-in-out infinite;
+		}
+		#gire .aparelho::after {
+			content: ''; position: absolute; top: 50%; right: 9px;
+			width: 5px; height: 5px; margin-top: -2.5px;
+			border-radius: 50%; background: #52f2d0;
+		}
+		@keyframes virar {
+			0%, 22%   { transform: rotate(90deg) scale(.92); }
+			45%, 100% { transform: rotate(0deg) scale(1); }
+		}
+		@media (prefers-reduced-motion: reduce) {
+			#gire .aparelho { animation: none; }
+		}
+		@media (orientation: portrait) and (pointer: coarse) {
+			#gire { display: flex; }
+		}
+
+		#status-notice {
+			position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+			display: none; z-index: 2; max-width: min(520px, 84vw);
+			background: #1a0d12; border: 1px solid #7a2b3a; border-radius: 8px;
+			color: #ffc9d2; padding: 18px 20px; text-align: center;
+			font: 400 13px/1.5 ui-monospace, monospace;
+		}
+	</style>
+	<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<link rel="manifest" href="index.manifest.json">
+
+</head>
+<body>
+	<canvas id="canvas">Seu navegador não suporta canvas.</canvas>
+	<noscript>Este jogo precisa de JavaScript.</noscript>
+
+	<div id="gire" role="alertdialog" aria-label="Gire o aparelho">
+		<div class="aparelho"></div>
+		<div><strong>GIRE O APARELHO</strong>
+			A arena é horizontal. De pé ela vira uma fresta,<br>e não dá para pilotar nada aí dentro.</div>
+	</div>
+
+	<div id="status">
+		<canvas id="mar"></canvas>
+		<div id="status-notice"></div>
+	</div>
+
+	<!-- A descida roda ANTES do motor e, quando dá, FORA da thread principal.
+	     Compilar 39 MB de wasm congela a thread por segundos: qualquer
+	     animação que dependa dela para de desenhar, e a espera parece
+	     travamento. Num Worker com OffscreenCanvas ela continua fluida
+	     enquanto o navegador trabalha. -->
+	<script>
+const FONTE_DESCIDA = `
+function criarDescida(cv, base) {
+	const cx = cv.getContext('2d');
+	const FUNDO = 10994;
+
+	// as mesmas paletas de dados/camadas/*.tres
+	const PALETAS = [
+		{ prof: 200,  topo: [6, 24, 41],  meio: [4, 13, 25], fim: [2, 6, 13],
+		  tom: [82, 242, 208],  neve: [168, 220, 255] },
+		{ prof: 1000, topo: [8, 9, 32],   meio: [4, 5, 18],  fim: [1, 2, 9],
+		  tom: [123, 107, 255], neve: [186, 182, 255] },
+		{ prof: 4000, topo: [11, 4, 11],  meio: [6, 2, 7],   fim: [1, 1, 4],
+		  tom: [255, 94, 122],  neve: [255, 208, 216] },
+		{ prof: 6000, topo: [10, 6, 2],   meio: [5, 3, 1],   fim: [1, 1, 0],
+		  tom: [255, 196, 107], neve: [255, 224, 174] },
+	];
+	const ZONAS = [
+		{ nome: 'ZONA CREPUSCULAR', prof: 200,  tom: PALETAS[0].tom },
+		{ nome: 'ZONA BATIAL',      prof: 1000, tom: PALETAS[1].tom },
+		{ nome: 'ZONA ABISSAL',     prof: 4000, tom: PALETAS[2].tom },
+		{ nome: 'FOSSA HADAL',      prof: 6000, tom: PALETAS[3].tom },
+	];
+
+	let W = 0, H = 0, topo = 0, chao = 0, calmo = false;
+	let alvo = 0, atual = 0, indet = true, t = 0, desloc = 0, saiu = false;
+	const planos = [];
+	let spNevoa = null, spBolha = null;
+
+	// Três planos, do mais distante ao mais próximo.
+	const RECEITA = [
+		{ fator: 0.22, n: 26, rMin: 14, rMax: 46, alfa: 0.05, tipo: 'nevoa' },
+		{ fator: 0.60, n: 70, rMin: 0.6, rMax: 1.8, alfa: 0.30, tipo: 'neve' },
+		{ fator: 1.35, n: 30, rMin: 1.6, rMax: 4.4, alfa: 0.34, tipo: 'bolha' },
+	];
+
+	const mistura = (a, b, k) => [
+		Math.round(a[0] + (b[0] - a[0]) * k),
+		Math.round(a[1] + (b[1] - a[1]) * k),
+		Math.round(a[2] + (b[2] - a[2]) * k)];
+	const rgb = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+
+	// Cada camada vale um quarto da descida. Pela profundidade real elas
+	// ficavam absurdamente desiguais — a Crepuscular era 7% da barra e a
+	// Hadal 45% — e as duas primeiras cores passavam antes de serem vistas.
+	const MARCOS = [200, 1000, 4000, 6000, FUNDO];
+	function profDe(p) {
+		const f = Math.min(3.99999, Math.max(0, p * 4));
+		const i = Math.floor(f);
+		return MARCOS[i] + (MARCOS[i + 1] - MARCOS[i]) * (f - i);
+	}
+	function fracDe(prof) {
+		for (let i = 0; i < 4; i++) {
+			if (prof <= MARCOS[i + 1]) {
+				return (i + (prof - MARCOS[i]) / (MARCOS[i + 1] - MARCOS[i])) / 4;
+			}
+		}
+		return 1;
+	}
+	const yDe = (prof) => topo + fracDe(prof) * (chao - topo);
+
+	// Névoa e bolha desenhadas uma vez e carimbadas depois: montar um
+	// gradiente radial por partícula a cada quadro custava caro à toa.
+	function sprites() {
+		const R = 140;
+		spNevoa = new OffscreenCanvas(R * 2, R * 2);
+		const c1 = spNevoa.getContext('2d');
+		const g = c1.createRadialGradient(R, R, 0, R, R, R);
+		g.addColorStop(0, 'rgba(255,255,255,1)');
+		g.addColorStop(1, 'rgba(255,255,255,0)');
+		c1.fillStyle = g; c1.fillRect(0, 0, R * 2, R * 2);
+
+		const B = 16;
+		spBolha = new OffscreenCanvas(B * 2, B * 2);
+		const c2 = spBolha.getContext('2d');
+		c2.strokeStyle = 'rgba(255,255,255,1)'; c2.lineWidth = 1.6;
+		c2.beginPath(); c2.arc(B, B, B - 2, 0, 6.2832); c2.stroke();
+	}
+
+	function semear() {
+		planos.length = 0;
+		for (const r of RECEITA) {
+			const itens = [];
+			const n = calmo ? Math.round(r.n * 0.4) : r.n;
+			for (let i = 0; i < n; i++) {
+				itens.push({ x: Math.random() * W, y0: Math.random() * H,
+					r: r.rMin + Math.random() * (r.rMax - r.rMin), f: Math.random() * 6.28 });
+			}
+			planos.push({ cfg: r, itens: itens });
+		}
+	}
+
+	function tamanho(w, h, dpr, reduzido) {
+		W = w; H = h; calmo = !!reduzido;
+		cv.width = Math.floor(w * dpr); cv.height = Math.floor(h * dpr);
+		cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		topo = H * 0.30; chao = H * 0.80;
+		if (!spNevoa) sprites();
+		semear();
+	}
+
+	// A paleta anda pelo progresso, não pela profundidade: um quarto para
+	// cada camada. A cor segura a identidade por 82% da fatia e vira só
+	// junto da fronteira — com a virada começando antes, o meio de uma
+	// camada já aparecia pintado com a cor da seguinte.
+	function paleta(p, prof) {
+		const f = Math.min(3.99999, Math.max(0, p * 4));
+		const i = Math.floor(f);
+		const bruto = f - i;
+		const a = PALETAS[i];
+		const b = PALETAS[Math.min(i + 1, PALETAS.length - 1)];
+		let k = bruto <= 0.82 ? 0 : (bruto - 0.82) / 0.18;
+		k = k * k * (3 - 2 * k);
+		let nome = 'SUPERFÍCIE';
+		for (const z of ZONAS) if (prof >= z.prof) nome = z.nome;
+		return {
+			topo: mistura(a.topo, b.topo, k), meio: mistura(a.meio, b.meio, k),
+			fim: mistura(a.fim, b.fim, k), tom: mistura(a.tom, b.tom, k),
+			neve: mistura(a.neve, b.neve, k), nome: nome,
+		};
+	}
+
+	function agua(p, prof) {
+		const g = cx.createLinearGradient(0, 0, 0, H);
+		g.addColorStop(0.00, rgb(p.topo, 1));
+		g.addColorStop(0.45, rgb(p.meio, 1));
+		g.addColorStop(1.00, rgb(p.fim, 1));
+		cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+
+		const luz = Math.max(0, 1 - prof / 2600);
+		if (luz > 0.01) {
+			for (let i = 0; i < 4; i++) {
+				const x = W * (i + 0.5) / 4 + Math.sin(t * 0.3 + i) * 22;
+				const larg = W * 0.09;
+				const gg = cx.createLinearGradient(0, 0, 0, H * 0.62);
+				gg.addColorStop(0, rgb(p.tom, 0.09 * luz));
+				gg.addColorStop(1, rgb(p.tom, 0));
+				cx.fillStyle = gg;
+				cx.beginPath();
+				cx.moveTo(x - larg, 0); cx.lineTo(x + larg, 0);
+				cx.lineTo(x + larg * 0.28, H * 0.62); cx.lineTo(x - larg * 0.28, H * 0.62);
+				cx.closePath(); cx.fill();
+			}
+		}
+	}
+
+	function paralaxe(p) {
+		cx.save();
+		cx.globalCompositeOperation = 'lighter';
+		for (const plano of planos) {
+			const cfg = plano.cfg;
+			const margem = cfg.rMax * 3 + 8;
+			cx.fillStyle = rgb(p.neve, cfg.alfa);
+			for (const it of plano.itens) {
+				let y = (it.y0 - desloc * cfg.fator) % (H + margem * 2);
+				if (y < -margem) y += H + margem * 2;
+				const x = it.x + Math.sin(t * 0.6 + it.f) * (cfg.tipo === 'bolha' ? 9 : 3);
+				if (cfg.tipo === 'nevoa') {
+					const r = it.r * 3;
+					cx.globalAlpha = cfg.alfa;
+					cx.drawImage(spNevoa, x - r, y - r, r * 2, r * 2);
+					cx.globalAlpha = 1;
+				} else if (cfg.tipo === 'neve') {
+					cx.fillRect(x - it.r, y - it.r, it.r * 2, it.r * 2);
+				} else {
+					cx.globalAlpha = cfg.alfa;
+					cx.drawImage(spBolha, x - it.r, y - it.r, it.r * 2, it.r * 2);
+					cx.globalAlpha = 1;
+				}
+			}
+		}
+		cx.restore();
+	}
+
+	function camadas(prof) {
+		cx.textBaseline = 'middle';
+		cx.font = '10px ' + base.mono;
+		for (const z of ZONAS) {
+			const y = yDe(z.prof);
+			const passou = prof >= z.prof;
+			const cor = passou ? z.tom : [118, 136, 159];
+			cx.strokeStyle = rgb(cor, passou ? 0.42 : 0.16);
+			cx.lineWidth = 1; cx.setLineDash([2, 7]);
+			cx.beginPath(); cx.moveTo(W * 0.08, y); cx.lineTo(W * 0.92, y); cx.stroke();
+			cx.setLineDash([]);
+			cx.fillStyle = rgb(cor, passou ? 0.9 : 0.5);
+			cx.textAlign = 'left';  cx.fillText(z.nome, W * 0.08, y - 9);
+			cx.textAlign = 'right'; cx.fillText('−' + z.prof.toLocaleString('pt-BR') + ' M', W * 0.92, y - 9);
+		}
+		const yf = yDe(FUNDO);
+		const chegou = prof >= FUNDO - 40;
+		const cf = chegou ? [255, 94, 122] : [118, 136, 159];
+		cx.strokeStyle = rgb(cf, chegou ? 0.55 : 0.26);
+		cx.lineWidth = 1.4;
+		cx.beginPath(); cx.moveTo(W * 0.08, yf); cx.lineTo(W * 0.92, yf); cx.stroke();
+		cx.fillStyle = rgb(cf, chegou ? 0.85 : 0.5);
+		cx.textAlign = 'left';  cx.fillText('FUNDO', W * 0.08, yf + 12);
+		cx.textAlign = 'right'; cx.fillText('−10.994 M', W * 0.92, yf + 12);
+	}
+
+	function submersivel(y, p) {
+		const x = W * 0.5;
+		const bal = calmo ? 0 : Math.sin(t * 1.6) * 3.5;
+		const halo = cx.createRadialGradient(x, y, 2, x, y, 68);
+		halo.addColorStop(0, rgb(p.tom, 0.24));
+		halo.addColorStop(1, rgb(p.tom, 0));
+		cx.fillStyle = halo;
+		cx.beginPath(); cx.arc(x, y, 68, 0, 6.2832); cx.fill();
+
+		for (let i = 0; i < 5; i++) {
+			const k = (t * 0.9 + i * 0.2) % 1;
+			cx.strokeStyle = rgb(p.neve, 0.30 * (1 - k));
+			cx.lineWidth = 1;
+			cx.beginPath();
+			cx.arc(x + Math.sin(i * 2 + t) * 7, y - 24 - k * 90, 1.4 + k * 2.2, 0, 6.2832);
+			cx.stroke();
+		}
+
+		cx.save();
+		cx.translate(x + bal, y);
+		cx.rotate(Math.PI / 2);
+		cx.scale(1.7, 1.7);
+		cx.beginPath();
+		cx.moveTo(17, 0); cx.lineTo(-8, 10); cx.lineTo(-3.5, 0); cx.lineTo(-8, -10);
+		cx.closePath();
+		cx.fillStyle = '#081627'; cx.fill();
+		cx.strokeStyle = rgb(p.tom, 1); cx.lineWidth = 1.8; cx.stroke();
+		cx.beginPath(); cx.arc(3, 0, 3.2, 0, 6.2832);
+		cx.fillStyle = '#f2fbff'; cx.fill();
+		cx.restore();
+	}
+
+	// O texto também é desenhado aqui: no DOM ele congelaria junto com a
+	// thread principal, e a porcentagem parada é o que mais parece travamento.
+	function letras(p, prof) {
+		const tam = Math.max(34, Math.min(72, W * 0.075));
+		cx.textBaseline = 'alphabetic';
+		cx.textAlign = 'center';
+		cx.font = '800 ' + tam + 'px ' + base.display;
+		cx.shadowColor = rgb(p.tom, 0.35);
+		cx.shadowBlur = 34;
+		const meio = W * 0.5;
+		const larguraA = cx.measureText('ABIS').width;
+		const larguraB = cx.measureText('SAL').width;
+		const x0 = meio - (larguraA + larguraB) / 2;
+		cx.textAlign = 'left';
+		cx.fillStyle = '#e2ecf7'; cx.fillText('ABIS', x0, H * 0.155);
+		cx.fillStyle = rgb(p.tom, 1); cx.fillText('SAL', x0 + larguraA, H * 0.155);
+		cx.shadowBlur = 0;
+
+		const larg = Math.min(520, W * 0.78);
+		const bx = meio - larg / 2;
+		const by = H * 0.90;
+
+		cx.textAlign = 'center';
+		cx.font = '11px ' + base.mono;
+		if ('letterSpacing' in cx) cx.letterSpacing = '0.22em';
+		cx.fillStyle = rgb(p.tom, 1);
+		cx.fillText(p.nome, meio, by - 16);
+		if ('letterSpacing' in cx) cx.letterSpacing = '0px';
+
+		cx.fillStyle = 'rgba(226,236,247,.12)';
+		cx.fillRect(bx, by, larg, 2);
+		cx.shadowColor = rgb(p.tom, 0.7); cx.shadowBlur = 12;
+		cx.fillStyle = rgb(p.tom, 1);
+		cx.fillRect(bx, by, larg * atual, 2);
+		cx.shadowBlur = 0;
+
+		cx.font = '10px ' + base.mono;
+		cx.fillStyle = 'rgba(118,136,159,1)';
+		cx.textAlign = 'left';
+		cx.fillText(indet ? 'DESCENDO' : Math.round(atual * 100) + '%', bx, by + 20);
+		cx.textAlign = 'right';
+		cx.fillText('−' + prof.toLocaleString('pt-BR') + ' M', bx + larg, by + 20);
+	}
+
+	function quadro(dt) {
+		t += dt;
+		const antes = atual;
+		atual += (alvo - atual) * Math.min(1, dt * 2.6);
+		const prof = Math.round(profDe(atual));
+		// a água nunca para; avançar de verdade só a acelera
+		desloc += (46 + Math.max(0, atual - antes) * 9000) * dt;
+
+		const p = paleta(atual, prof);
+		agua(p, prof);
+		paralaxe(p);
+		camadas(prof);
+		submersivel(yDe(prof), p);
+		letras(p, prof);
+	}
+
+	return {
+		tamanho: tamanho,
+		quadro: quadro,
+		progresso: function (v, total) {
+			if (total > 0) { indet = false; alvo = Math.min(1, v / total); }
+			else if (indet) { alvo = Math.min(0.72, alvo + 0.02); }
+		},
+		fim: function () { indet = false; alvo = 1; saiu = true; },
+		acabou: function () { return saiu && atual > 0.995; },
+	};
+}
+`;
+
+const CORPO_WORKER = FONTE_DESCIDA + `
+let d = null, ultimo = 0;
+self.onmessage = function (e) {
+	const m = e.data;
+	if (m.tipo === 'init') {
+		try {
+			if (self.fonts && typeof FontFace !== 'undefined') {
+				new FontFace('Syne', 'url(' + m.raiz + 'fontes/Syne.ttf)', { weight: '800' })
+					.load().then(function (f) { self.fonts.add(f); }).catch(function () {});
+				new FontFace('ChivoMono', 'url(' + m.raiz + 'fontes/ChivoMono.ttf)')
+					.load().then(function (f) { self.fonts.add(f); }).catch(function () {});
+			}
+		} catch (err) { /* fonte é enfeite: sem ela o resto continua */ }
+		d = criarDescida(m.cv, m.base);
+		d.tamanho(m.w, m.h, m.dpr, m.reduzido);
+		ultimo = performance.now();
+		laco();
+	} else if (m.tipo === 'tamanho' && d) {
+		d.tamanho(m.w, m.h, m.dpr, m.reduzido);
+	} else if (m.tipo === 'progresso' && d) {
+		d.progresso(m.v, m.total);
+	} else if (m.tipo === 'fim' && d) {
+		d.fim();
+	}
+};
+
+// Worker não tem requestAnimationFrame: o laço é por temporizador, e é
+// justamente por isso que ele não depende da thread principal.
+function laco() {
+	const agora = performance.now();
+	const dt = Math.min((agora - ultimo) / 1000, 0.05);
+	ultimo = agora;
+	d.quadro(dt);
+	if (d.acabou()) { self.postMessage({ tipo: 'acabou' }); return; }
+	setTimeout(laco, 16);
+}
+`;
+
+window.__descida = (function () {
+	const cv = document.getElementById('mar');
+	const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+	const raiz = location.href.replace(/[^/]*$/, '');
+	const base = {
+		display: "Syne, system-ui, sans-serif",
+		mono: "ChivoMono, ui-monospace, monospace",
+	};
+	const medida = function () {
+		return { w: window.innerWidth, h: window.innerHeight,
+			dpr: Math.min(window.devicePixelRatio || 1, 2), reduzido: reduzido };
+	};
+
+	// Caminho bom: o desenho sai da thread principal e sobrevive à compilação
+	// do wasm. Sem OffscreenCanvas, cai no laço comum — que trava junto, mas
+	// é melhor que nada.
+	let fora = null;
+	try {
+		if (window.Worker && cv.transferControlToOffscreen) {
+			const blob = new Blob([CORPO_WORKER], { type: 'text/javascript' });
+			fora = new Worker(URL.createObjectURL(blob));
+			const off = cv.transferControlToOffscreen();
+			const m = medida();
+			fora.postMessage({ tipo: 'init', cv: off, base: base, raiz: raiz,
+				w: m.w, h: m.h, dpr: m.dpr, reduzido: m.reduzido }, [off]);
+		}
+	} catch (err) { fora = null; }
+
+	let local = null, vivoLocal = true;
+	if (!fora) {
+		local = (new Function(FONTE_DESCIDA + '; return criarDescida;'))()(cv, base);
+		const m = medida();
+		local.tamanho(m.w, m.h, m.dpr, m.reduzido);
+		let ultimo = performance.now();
+		const passo = function (agora) {
+			const dt = Math.min((agora - ultimo) / 1000, 0.05);
+			ultimo = agora;
+			local.quadro(dt);
+			if (vivoLocal) requestAnimationFrame(passo);
+		};
+		requestAnimationFrame(passo);
+	}
+
+	window.addEventListener('resize', function () {
+		const m = medida();
+		if (fora) fora.postMessage({ tipo: 'tamanho', w: m.w, h: m.h, dpr: m.dpr, reduzido: m.reduzido });
+		else if (local) local.tamanho(m.w, m.h, m.dpr, m.reduzido);
+	});
+
+	// enquanto não há número, desce devagar por conta própria
+	const passeio = setInterval(function () {
+		if (fora) fora.postMessage({ tipo: 'progresso', v: 0, total: 0 });
+		else if (local) local.progresso(0, 0);
+	}, 420);
+
+	const sair = function () {
+		const st = document.getElementById('status');
+		st.classList.add('saiu');
+		setTimeout(function () {
+			vivoLocal = false;
+			if (fora) fora.terminate();
+			st.remove();
+		}, 620);
+	};
+
+	if (fora) {
+		fora.onmessage = function (e) { if (e.data && e.data.tipo === 'acabou') sair(); };
+	}
+
+	return {
+		progresso: function (v, total) {
+			if (total > 0) clearInterval(passeio);
+			if (fora) fora.postMessage({ tipo: 'progresso', v: v, total: total });
+			else if (local) local.progresso(v, total);
+		},
+		terminou: function () {
+			clearInterval(passeio);
+			if (fora) fora.postMessage({ tipo: 'fim' });
+			else if (local) { local.fim(); setTimeout(sair, 500); }
+		},
+	};
+}());
+	</script>
+
+	<script>
+// Em tela cheia alguns navegadores deixam travar a orientação. Onde deixam,
+// o jogador nem vê o aviso; onde não deixam (iOS, por exemplo), o aviso de
+// CSS continua sendo a rede de segurança.
+document.addEventListener('fullscreenchange', function () {
+	try {
+		if (document.fullscreenElement && screen.orientation && screen.orientation.lock) {
+			screen.orientation.lock('landscape').catch(function () {});
+		}
+	} catch (err) { /* navegador sem suporte: o aviso resolve */ }
+});
+	</script>
+
+	<script src="index.js"></script>
+	<script>
+const GODOT_CONFIG = {"args":["teste_serpente"],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":27453108,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusNotice = document.getElementById('status-notice');
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) statusNotice.removeChild(statusNotice.lastChild);
+		text.split('\n').forEach(function (line) {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+		statusNotice.style.display = 'block';
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		setStatusNotice(err instanceof Error ? err.message
+			: (typeof err === 'string' ? err : 'Ocorreu um erro desconhecido.'));
+	}
+
+	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let reg;
+			try { reg = navigator.serviceWorker.getRegistration(); }
+			catch (err) { reg = Promise.reject(new Error('Service worker registration failed.')); }
+			Promise.race([
+				reg.then(function (r) {
+					if (r != null) return Promise.reject(new Error('Service worker already exists.'));
+					return r;
+				}).then(function () { return engine.installServiceWorker(); }),
+				new Promise(function (resolve) { setTimeout(resolve, 2000); }),
+			]).then(function () { window.location.reload(); })
+				.catch(function (err) { console.error('Erro ao registrar o service worker:', err); });
+		} else {
+			displayFailureNotice('Este navegador não tem o que o jogo precisa:\n' + missing.join('\n'));
+		}
+	} else {
+		engine.startGame({
+			'onProgress': function (current, total) { window.__descida.progresso(current, total); },
+		}).then(function () { window.__descida.terminou(); }, displayFailureNotice);
+	}
+}());
+	</script>
+</body>
+</html>
+
