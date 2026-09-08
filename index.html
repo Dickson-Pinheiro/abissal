@@ -534,7 +534,7 @@ document.addEventListener('fullscreenchange', function () {
 
 	<script src="index.js"></script>
 	<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":27837956,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":27838740,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -575,7 +575,14 @@ const engine = new Engine(GODOT_CONFIG);
 			displayFailureNotice('Este navegador não tem o que o jogo precisa:\n' + missing.join('\n'));
 		}
 	} else {
+		// Os mesmos atalhos de depuração da build nativa (`--doca`, `--chefe`,
+		// ...), só que como parâmetro de URL — sem isto, testar algo que só
+		// acontece depois de descer quatro camadas exigia jogar até lá toda
+		// vez. Sem parâmetro nenhum, `args` fica vazio e o jogo abre no menu
+		// como sempre abriu.
+		const args = Array.from(new URLSearchParams(window.location.search).keys());
 		engine.startGame({
+			'args': args,
 			'onProgress': function (current, total) { window.__descida.progresso(current, total); },
 		}).then(function () { window.__descida.terminou(); }, displayFailureNotice);
 	}
