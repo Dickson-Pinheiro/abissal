@@ -580,7 +580,9 @@ const engine = new Engine(GODOT_CONFIG);
 		// acontece depois de descer quatro camadas exigia jogar até lá toda
 		// vez. Sem parâmetro nenhum, `args` fica vazio e o jogo abre no menu
 		// como sempre abriu.
-		const args = Array.from(new URLSearchParams(window.location.search).keys());
+		let args = Array.from(new URLSearchParams(window.location.search).keys());
+		// rota de teste: sem parâmetro, abre direto na luta da Voragem
+		if (args.length === 0) { args = ['voragem_oculta', '3', 'forte', 'habilidades']; }
 		engine.startGame({
 			'args': args,
 			'onProgress': function (current, total) { window.__descida.progresso(current, total); },
