@@ -4,9 +4,9 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1792625296|24525086';
+const CACHE_VERSION = '1792704461|26951799';
 /** @type {string} */
-const CACHE_PREFIX = 'Abissal · teste -sw-cache-';
+const CACHE_PREFIX = 'Abissal-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 /** @type {string} */
 const OFFLINE_URL = 'index.offline.html';
